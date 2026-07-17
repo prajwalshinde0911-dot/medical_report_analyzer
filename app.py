@@ -2,6 +2,7 @@ import streamlit as st
 from core.pdf_extractor import extract_text_from_pdf, is_text_extractable
 from core.parameter_parser import parse_parameters
 from core.abnormality_detector import annotate_dataframe, parse_range
+from core.summary_generator import generate_structured_summary
 
 st.set_page_config(page_title="Medical Report Analyzer", page_icon="🩺", layout="wide")
 
@@ -77,6 +78,30 @@ def dashboard_page():
                     c1.metric("Total Parameters", total)
                     c2.metric("Normal", normal)
                     c3.metric("Abnormal", abnormal)
+
+                with st.container(border=True):
+                    st.subheader("🤖 AI Health Insight")
+                    with st.spinner("Analyzing report..."):
+                        summary = generate_structured_summary(df)
+
+                    st.markdown(f"**Overview:** {summary.get('overview', '')}")
+
+                    findings = summary.get("findings", [])
+                    if findings:
+                        st.markdown("**Key Findings:**")
+                        for f in findings:
+                            st.markdown(f"""
+                            <div class="param-card">
+                                <b>⚠️ {f.get('parameter', '')}</b><br>
+                                <small>{f.get('explanation', '')}</small>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+                    general_notes = summary.get("general_notes", "")
+                    if general_notes:
+                        st.markdown(f"**General Notes:** {general_notes}")
+
+                    st.caption("⚠️ This is an AI-generated informational summary, not a medical diagnosis. Please consult your doctor for professional interpretation.")
 
                 with st.container(border=True):
                     st.subheader("🧪 Parameter Details")
