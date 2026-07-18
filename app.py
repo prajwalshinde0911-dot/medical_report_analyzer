@@ -4,6 +4,7 @@ from core.parameter_parser import parse_parameters
 from core.abnormality_detector import annotate_dataframe, parse_range
 from core.summary_generator import generate_structured_summary
 from core.ocr_extractor import extract_text_with_ocr
+from core.analytics import show_status_donut, show_range_position_chart
 
 st.set_page_config(page_title="Medical Report Analyzer", page_icon="🩺", layout="wide")
 
@@ -111,6 +112,14 @@ def dashboard_page():
                     st.markdown(f"**General Notes:** {general_notes}")
 
                 st.caption("⚠️ This is an AI-generated informational summary, not a medical diagnosis. Please consult your doctor for professional interpretation.")
+
+            with st.container(border=True):
+                st.subheader("📊 Analytics")
+                tab1, tab2 = st.tabs(["Status Overview", "Range Position"])
+                with tab1:
+                    show_status_donut(df)
+                with tab2:
+                    show_range_position_chart(df, parse_range)
 
             with st.container(border=True):
                 st.subheader("🧪 Parameter Details")
