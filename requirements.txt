@@ -6,3 +6,5 @@ PyPDF2
 plotly
 python-dotenv
 google-genai
+easyocr
+pdf2image
