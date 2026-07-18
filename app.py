@@ -3,6 +3,7 @@ from core.pdf_extractor import extract_text_from_pdf, is_text_extractable
 from core.parameter_parser import parse_parameters
 from core.abnormality_detector import annotate_dataframe, parse_range
 from core.summary_generator import generate_structured_summary
+from core.ocr_extractor import extract_text_with_ocr
 
 st.set_page_config(page_title="Medical Report Analyzer", page_icon="🩺", layout="wide")
 
@@ -60,81 +61,87 @@ def dashboard_page():
         uploaded_file = st.file_uploader("Upload a lab report (PDF)", type=["pdf"], label_visibility="collapsed")
 
     if uploaded_file is not None:
+        uploaded_file.seek(0)
         if is_text_extractable(uploaded_file):
             uploaded_file.seek(0)
             text = extract_text_from_pdf(uploaded_file)
-            df = parse_parameters(text)
+        else:
+            st.info("📸 Scanned/image-based PDF detected — running OCR (this may take a moment)...")
+            uploaded_file.seek(0)
+            file_bytes = uploaded_file.read()
+            with st.spinner("Extracting text using OCR..."):
+                text = extract_text_with_ocr(file_bytes)
 
-            if not df.empty:
-                df = annotate_dataframe(df)
+        df = parse_parameters(text)
 
-                total = len(df)
-                abnormal = len(df[df["Status"].isin(["High", "Low"])])
-                normal = total - abnormal
+        if not df.empty:
+            df = annotate_dataframe(df)
 
-                with st.container(border=True):
-                    st.subheader("🩺 Health Snapshot")
-                    c1, c2, c3 = st.columns(3)
-                    c1.metric("Total Parameters", total)
-                    c2.metric("Normal", normal)
-                    c3.metric("Abnormal", abnormal)
+            total = len(df)
+            abnormal = len(df[df["Status"].isin(["High", "Low"])])
+            normal = total - abnormal
 
-                with st.container(border=True):
-                    st.subheader("🤖 AI Health Insight")
-                    with st.spinner("Analyzing report..."):
-                        summary = generate_structured_summary(df)
+            with st.container(border=True):
+                st.subheader("🩺 Health Snapshot")
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Total Parameters", total)
+                c2.metric("Normal", normal)
+                c3.metric("Abnormal", abnormal)
 
-                    st.markdown(f"**Overview:** {summary.get('overview', '')}")
+            with st.container(border=True):
+                st.subheader("🤖 AI Health Insight")
+                with st.spinner("Analyzing report..."):
+                    summary = generate_structured_summary(df)
 
-                    findings = summary.get("findings", [])
-                    if findings:
-                        st.markdown("**Key Findings:**")
-                        for f in findings:
-                            st.markdown(f"""
-                            <div class="param-card">
-                                <b>⚠️ {f.get('parameter', '')}</b><br>
-                                <small>{f.get('explanation', '')}</small>
-                            </div>
-                            """, unsafe_allow_html=True)
+                st.markdown(f"**Overview:** {summary.get('overview', '')}")
 
-                    general_notes = summary.get("general_notes", "")
-                    if general_notes:
-                        st.markdown(f"**General Notes:** {general_notes}")
-
-                    st.caption("⚠️ This is an AI-generated informational summary, not a medical diagnosis. Please consult your doctor for professional interpretation.")
-
-                with st.container(border=True):
-                    st.subheader("🧪 Parameter Details")
-                    for _, row in df.iterrows():
-                        low, high = parse_range(row["Reference Range"])
-                        try:
-                            value = float(row["Result"])
-                        except ValueError:
-                            value = None
-
-                        status_class = {"Normal": "status-normal", "High": "status-high", "Low": "status-low"}.get(row["Status"], "")
-                        status_icon = {"Normal": "✅", "High": "⬆️", "Low": "⬇️"}.get(row["Status"], "❔")
-
+                findings = summary.get("findings", [])
+                if findings:
+                    st.markdown("**Key Findings:**")
+                    for f in findings:
                         st.markdown(f"""
                         <div class="param-card">
-                            <b>{row['Parameter']}</b> — {row['Result']} {row['Unit']}
-                            &nbsp;&nbsp; <span class="{status_class}">{status_icon} {row['Status']}</span>
-                            <br><small>Reference Range: {row['Reference Range']} {row['Unit']}</small>
+                            <b>⚠️ {f.get('parameter', '')}</b><br>
+                            <small>{f.get('explanation', '')}</small>
                         </div>
                         """, unsafe_allow_html=True)
 
-                        if low is not None and high is not None and value is not None:
-                            span = high - low
-                            position = (value - low) / span if span > 0 else 0.5
-                            position = max(0, min(1, position))
-                            st.progress(position)
+                general_notes = summary.get("general_notes", "")
+                if general_notes:
+                    st.markdown(f"**General Notes:** {general_notes}")
 
-                with st.expander("📄 View Full Extracted Text"):
-                    st.text_area("Report content", text, height=250, label_visibility="collapsed")
-            else:
-                st.warning("Could not parse any parameters — check report format.")
+                st.caption("⚠️ This is an AI-generated informational summary, not a medical diagnosis. Please consult your doctor for professional interpretation.")
+
+            with st.container(border=True):
+                st.subheader("🧪 Parameter Details")
+                for _, row in df.iterrows():
+                    low, high = parse_range(row["Reference Range"])
+                    try:
+                        value = float(row["Result"])
+                    except ValueError:
+                        value = None
+
+                    status_class = {"Normal": "status-normal", "High": "status-high", "Low": "status-low"}.get(row["Status"], "")
+                    status_icon = {"Normal": "✅", "High": "⬆️", "Low": "⬇️"}.get(row["Status"], "❔")
+
+                    st.markdown(f"""
+                    <div class="param-card">
+                        <b>{row['Parameter']}</b> — {row['Result']} {row['Unit']}
+                        &nbsp;&nbsp; <span class="{status_class}">{status_icon} {row['Status']}</span>
+                        <br><small>Reference Range: {row['Reference Range']} {row['Unit']}</small>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    if low is not None and high is not None and value is not None:
+                        span = high - low
+                        position = (value - low) / span if span > 0 else 0.5
+                        position = max(0, min(1, position))
+                        st.progress(position)
+
+            with st.expander("📄 View Full Extracted Text"):
+                st.text_area("Report content", text, height=250, label_visibility="collapsed")
         else:
-            st.warning("⚠️ This looks like a scanned/image-based PDF — OCR needed (coming next)")
+            st.warning("Could not parse any parameters — check report format.")
 
 if st.session_state.logged_in:
     dashboard_page()
