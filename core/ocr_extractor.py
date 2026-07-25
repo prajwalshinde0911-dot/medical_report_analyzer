@@ -6,27 +6,41 @@ from pdf2image import convert_from_bytes
 
 WINDOWS_POPPLER_PATH = r"C:\poppler\poppler-24.07.0\Library\bin"
 
+# Common install locations for poppler-utils on Debian/Ubuntu-based Linux servers
+LINUX_FALLBACK_PATHS = ["/usr/bin", "/usr/local/bin"]
+
 
 def get_poppler_path():
-    """Return an explicit poppler bin path on Windows, or None to rely on system PATH (Linux/Cloud)."""
+    """
+    Figure out the folder containing pdftoppm/pdfinfo.
+    Returns a path string to pass to pdf2image, or None if it should
+    just rely on system PATH.
+    """
     if os.name == "nt" and os.path.exists(WINDOWS_POPPLER_PATH):
         return WINDOWS_POPPLER_PATH
-    return None
+
+    # First, try normal PATH lookup (works in most environments)
+    if shutil.which("pdftoppm") and shutil.which("pdfinfo"):
+        return None  # pdf2image will find it via PATH itself
+
+    # PATH lookup failed — check known install locations directly
+    # (covers cases like Streamlit Cloud's uv-based venv not inheriting full PATH)
+    for candidate in LINUX_FALLBACK_PATHS:
+        if os.path.exists(os.path.join(candidate, "pdftoppm")) and \
+           os.path.exists(os.path.join(candidate, "pdfinfo")):
+            return candidate
+
+    return None  # nothing found anywhere; let the check function report the failure
 
 
 def check_poppler_available(poppler_path=None):
-    """
-    Verify that poppler's command-line tools (pdftoppm / pdfinfo) can actually
-    be found, so we can fail with a clear message instead of a cryptic one.
-    """
+    """Verify poppler's command-line tools can actually be found, given a resolved path."""
     if poppler_path:
         pdftoppm = os.path.join(poppler_path, "pdftoppm")
         pdfinfo = os.path.join(poppler_path, "pdfinfo")
-        found = os.path.exists(pdftoppm) or os.path.exists(pdftoppm + ".exe")
-    else:
-        found = shutil.which("pdftoppm") is not None and shutil.which("pdfinfo") is not None
-
-    return found
+        return (os.path.exists(pdftoppm) or os.path.exists(pdftoppm + ".exe")) and \
+               (os.path.exists(pdfinfo) or os.path.exists(pdfinfo + ".exe"))
+    return shutil.which("pdftoppm") is not None and shutil.which("pdfinfo") is not None
 
 
 @st.cache_resource
@@ -47,11 +61,11 @@ def extract_text_with_ocr(file_bytes, row_tolerance=12):
     poppler_path = get_poppler_path()
 
     if not check_poppler_available(poppler_path):
+        searched = poppler_path or "system PATH"
         return (
-            "[OCR_ERROR] Poppler is not installed or not found in PATH on this server. "
-            "This is a system dependency issue (not related to the PDF content). "
-            "Add a 'packages.txt' file to your repo root containing the line "
-            "'poppler-utils' and redeploy."
+            f"[OCR_ERROR] Poppler tools (pdftoppm/pdfinfo) could not be found "
+            f"(searched: {searched}). This is a system dependency issue. "
+            f"Confirm 'packages.txt' contains 'poppler-utils' at the repo root and redeploy."
         )
 
     try:
