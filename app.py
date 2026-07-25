@@ -144,45 +144,52 @@ def dashboard_page():
             uploaded_file = st.file_uploader("Upload a lab report (PDF)", type=["pdf"], label_visibility="collapsed")
 
         if uploaded_file is not None:
-            uploaded_file.seek(0)
-            if is_text_extractable(uploaded_file):
+            text = None
+            try:
                 uploaded_file.seek(0)
-                text = extract_text_from_pdf(uploaded_file)
-            else:
-                st.info("📸 Scanned/image-based PDF detected — running OCR (this may take a moment)...")
-                uploaded_file.seek(0)
-                file_bytes = uploaded_file.read()
-                with st.spinner("Extracting text using OCR..."):
-                    text = extract_text_with_ocr(file_bytes, row_tolerance=ocr_tolerance)
+                if is_text_extractable(uploaded_file):
+                    uploaded_file.seek(0)
+                    text = extract_text_from_pdf(uploaded_file)
+                else:
+                    st.info("📸 Scanned/image-based PDF detected — running OCR (this may take a moment)...")
+                    uploaded_file.seek(0)
+                    file_bytes = uploaded_file.read()
+                    with st.spinner("Extracting text using OCR..."):
+                        text = extract_text_with_ocr(file_bytes, row_tolerance=ocr_tolerance)
+            except Exception as e:
+                st.error(f"❌ Could not read this PDF: {e}")
 
-            df = parse_parameters(text)
+            if text is not None:
+                df = parse_parameters(text)
 
-            if not df.empty:
-                df = annotate_dataframe(df)
+                if not df.empty:
+                    df = annotate_dataframe(df)
 
-                summary = None
-                if show_ai_insight:
-                    with st.spinner("Analyzing report..."):
-                        summary = generate_structured_summary(df)
+                    summary = None
+                    if show_ai_insight:
+                        with st.spinner("Analyzing report..."):
+                            summary = generate_structured_summary(df)
 
-                render_analysis(df, text, summary, show_ai_insight=show_ai_insight)
+                    render_analysis(df, text, summary, show_ai_insight=show_ai_insight)
 
-                already_saved = any(
-                    entry["filename"] == uploaded_file.name and entry["text"] == text
-                    for entry in st.session_state.report_history
-                )
-                if not already_saved:
-                    st.session_state.report_history.append({
-                        "filename": uploaded_file.name,
-                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                        "df": df,
-                        "text": text,
-                        "summary": summary,
-                        "total": len(df),
-                        "abnormal": len(df[df["Status"].isin(["High", "Low"])])
-                    })
-            else:
-                st.warning("Could not parse any parameters — check report format.")
+                    already_saved = any(
+                        entry["filename"] == uploaded_file.name and entry["text"] == text
+                        for entry in st.session_state.report_history
+                    )
+                    if not already_saved:
+                        st.session_state.report_history.append({
+                            "filename": uploaded_file.name,
+                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                            "df": df,
+                            "text": text,
+                            "summary": summary,
+                            "total": len(df),
+                            "abnormal": len(df[df["Status"].isin(["High", "Low"])])
+                        })
+                else:
+                    st.warning("Could not parse any parameters — check report format.")
+                    with st.expander("🔍 Debug: Raw OCR/Extracted Text"):
+                        st.text(text)
 
     with tab_history:
         if not st.session_state.report_history:

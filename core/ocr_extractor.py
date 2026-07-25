@@ -1,26 +1,35 @@
 import os
+import shutil
 import numpy as np
 import streamlit as st
 from pdf2image import convert_from_bytes
 
 WINDOWS_POPPLER_PATH = r"C:\poppler\poppler-24.07.0\Library\bin"
+LINUX_FALLBACK_PATHS = ["/usr/bin", "/usr/local/bin"]
+
 
 def get_poppler_path():
     if os.name == "nt" and os.path.exists(WINDOWS_POPPLER_PATH):
         return WINDOWS_POPPLER_PATH
-    return None  # Linux/Streamlit Cloud: poppler-utils installed via packages.txt, already in PATH
+
+    if shutil.which("pdftoppm") and shutil.which("pdfinfo"):
+        return None
+
+    for candidate in LINUX_FALLBACK_PATHS:
+        if os.path.exists(os.path.join(candidate, "pdftoppm")) and \
+           os.path.exists(os.path.join(candidate, "pdfinfo")):
+            return candidate
+
+    return None
+
 
 @st.cache_resource
 def get_ocr_reader():
     import easyocr
     return easyocr.Reader(['en'], gpu=False)
 
+
 def extract_text_with_ocr(file_bytes, row_tolerance=12):
-    """
-    Extract text from a scanned/image-based PDF using OCR,
-    reconstructing table rows from bounding-box positions so
-    values stay on the same line as their parameter/unit/range.
-    """
     try:
         reader = get_ocr_reader()
     except Exception as e:
