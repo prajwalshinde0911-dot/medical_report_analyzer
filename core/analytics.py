@@ -2,7 +2,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-def show_status_donut(df):
+def show_status_donut(df, key=None):
     """Donut chart showing proportion of Normal vs High vs Low parameters."""
     status_counts = df["Status"].value_counts().reset_index()
     status_counts.columns = ["Status", "Count"]
@@ -19,9 +19,9 @@ def show_status_donut(df):
     )
     fig.update_traces(textinfo="label+percent")
     fig.update_layout(height=350, showlegend=True, margin=dict(t=20, b=20, l=20, r=20))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key=key)
 
-def show_range_position_chart(df, parse_range_func):
+def show_range_position_chart(df, parse_range_func, key=None):
     """
     Horizontal chart showing where each abnormal parameter's value falls
     relative to its normal range (0 = low bound, 1 = high bound).
@@ -77,4 +77,4 @@ def show_range_position_chart(df, parse_range_func):
         xaxis=dict(range=[-0.2, 1.2], showticklabels=False, title="Relative to normal range (low → high)"),
         margin=dict(t=20, b=40, l=20, r=20)
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key=key)

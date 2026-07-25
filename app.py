@@ -48,7 +48,7 @@ def login_page():
                     st.error("Invalid username or password")
             st.caption("Demo — Username: `admin` | Password: `admin123`")
 
-def render_analysis(df, text, summary, show_ai_insight=True):
+def render_analysis(df, text, summary, show_ai_insight=True, key_prefix="current"):
     total = len(df)
     abnormal = len(df[df["Status"].isin(["High", "Low"])])
     normal = total - abnormal
@@ -86,9 +86,9 @@ def render_analysis(df, text, summary, show_ai_insight=True):
         st.subheader("📊 Analytics")
         tab1, tab2 = st.tabs(["Status Overview", "Range Position"])
         with tab1:
-            show_status_donut(df)
+            show_status_donut(df, key=f"{key_prefix}_donut")
         with tab2:
-            show_range_position_chart(df, parse_range)
+            show_range_position_chart(df, parse_range, key=f"{key_prefix}_range")
 
     with st.container(border=True):
         st.subheader("🧪 Parameter Details")
@@ -170,7 +170,7 @@ def dashboard_page():
                         with st.spinner("Analyzing report..."):
                             summary = generate_structured_summary(df)
 
-                    render_analysis(df, text, summary, show_ai_insight=show_ai_insight)
+                    render_analysis(df, text, summary, show_ai_insight=show_ai_insight, key_prefix="current")
 
                     already_saved = any(
                         entry["filename"] == uploaded_file.name and entry["text"] == text
@@ -207,7 +207,7 @@ def dashboard_page():
                         st.session_state[f"expanded_{i}"] = not st.session_state.get(f"expanded_{i}", False)
 
                     if st.session_state.get(f"expanded_{i}", False):
-                        render_analysis(entry["df"], entry["text"], entry["summary"], show_ai_insight=show_ai_insight)
+                        render_analysis(entry["df"], entry["text"], entry["summary"], show_ai_insight=show_ai_insight, key_prefix=f"history_{i}")
 
 if st.session_state.logged_in:
     dashboard_page()
