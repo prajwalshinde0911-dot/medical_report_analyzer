@@ -1,94 +1,41 @@
 import os
-import shutil
 import numpy as np
 import streamlit as st
 from pdf2image import convert_from_bytes
 
 WINDOWS_POPPLER_PATH = r"C:\poppler\poppler-24.07.0\Library\bin"
 
-# Common install locations for poppler-utils on Debian/Ubuntu-based Linux servers
-LINUX_FALLBACK_PATHS = ["/usr/bin", "/usr/local/bin"]
-
-
 def get_poppler_path():
-    """
-    Figure out the folder containing pdftoppm/pdfinfo.
-    Returns a path string to pass to pdf2image, or None if it should
-    just rely on system PATH.
-    """
     if os.name == "nt" and os.path.exists(WINDOWS_POPPLER_PATH):
         return WINDOWS_POPPLER_PATH
-
-    # First, try normal PATH lookup (works in most environments)
-    if shutil.which("pdftoppm") and shutil.which("pdfinfo"):
-        return None  # pdf2image will find it via PATH itself
-
-    # PATH lookup failed — check known install locations directly
-    # (covers cases like Streamlit Cloud's uv-based venv not inheriting full PATH)
-    for candidate in LINUX_FALLBACK_PATHS:
-        if os.path.exists(os.path.join(candidate, "pdftoppm")) and \
-           os.path.exists(os.path.join(candidate, "pdfinfo")):
-            return candidate
-
-    return None  # nothing found anywhere; let the check function report the failure
-
-
-def check_poppler_available(poppler_path=None):
-    """Verify poppler's command-line tools can actually be found, given a resolved path."""
-    if poppler_path:
-        pdftoppm = os.path.join(poppler_path, "pdftoppm")
-        pdfinfo = os.path.join(poppler_path, "pdfinfo")
-        return (os.path.exists(pdftoppm) or os.path.exists(pdftoppm + ".exe")) and \
-               (os.path.exists(pdfinfo) or os.path.exists(pdfinfo + ".exe"))
-    return shutil.which("pdftoppm") is not None and shutil.which("pdfinfo") is not None
-
+    return None  # Linux/Streamlit Cloud: poppler-utils installed via packages.txt, already in PATH
 
 @st.cache_resource
 def get_ocr_reader():
     import easyocr
     return easyocr.Reader(['en'], gpu=False)
 
-
 def extract_text_with_ocr(file_bytes, row_tolerance=12):
     """
-    Extract text from a scanned/image-based PDF using OCR, reconstructing
-    table rows from bounding-box positions so values stay on the same line
-    as their parameter/unit/range.
-
-    Returns a plain string. On failure, returns a string starting with
-    "[OCR_ERROR]" so the caller can detect and surface the problem clearly.
+    Extract text from a scanned/image-based PDF using OCR,
+    reconstructing table rows from bounding-box positions so
+    values stay on the same line as their parameter/unit/range.
     """
-    poppler_path = get_poppler_path()
-
-    if not check_poppler_available(poppler_path):
-        searched = poppler_path or "system PATH"
-        return (
-            f"[OCR_ERROR] Poppler tools (pdftoppm/pdfinfo) could not be found "
-            f"(searched: {searched}). This is a system dependency issue. "
-            f"Confirm 'packages.txt' contains 'poppler-utils' at the repo root and redeploy."
-        )
-
-    try:
-        images = convert_from_bytes(file_bytes, poppler_path=poppler_path)
-    except Exception as e:
-        return f"[OCR_ERROR] Could not convert PDF pages to images: {e}"
-
-    if not images:
-        return "[OCR_ERROR] PDF converted but produced 0 pages — the file may be corrupt or empty."
-
     try:
         reader = get_ocr_reader()
     except Exception as e:
-        return f"[OCR_ERROR] OCR engine (EasyOCR) failed to load: {e}"
+        return f"[OCR unavailable right now: {e}]"
+
+    try:
+        poppler_path = get_poppler_path()
+        images = convert_from_bytes(file_bytes, poppler_path=poppler_path)
+    except Exception as e:
+        return f"[Could not process scanned PDF: {e}]"
 
     full_text = ""
     for img in images:
         img_array = np.array(img)
-
-        try:
-            results = reader.readtext(img_array, detail=1)
-        except Exception as e:
-            return f"[OCR_ERROR] OCR failed while reading a page: {e}"
+        results = reader.readtext(img_array, detail=1)
 
         items = []
         for bbox, text, conf in results:
@@ -114,8 +61,5 @@ def extract_text_with_ocr(file_bytes, row_tolerance=12):
         for row in rows:
             row.sort(key=lambda t: t[0])
             full_text += "    ".join(text for _, text in row) + "\n"
-
-    if not full_text.strip():
-        return "[OCR_ERROR] OCR ran successfully but detected no text on any page."
 
     return full_text.strip()

@@ -183,8 +183,6 @@ def dashboard_page():
                     })
             else:
                 st.warning("Could not parse any parameters — check report format.")
-                with st.expander("🔍 Debug: Raw OCR/Extracted Text"):
-                    st.text(text)
 
     with tab_history:
         if not st.session_state.report_history:
