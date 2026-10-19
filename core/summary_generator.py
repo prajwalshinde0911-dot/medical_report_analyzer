@@ -1,19 +1,31 @@
 import os
 import json
+import time
 from dotenv import load_dotenv
 import streamlit as st
 from google import genai
 
 load_dotenv()
 
-api_key = os.getenv("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY")
+api_key = os.getenv("GEMINI_API_KEY")
+if not api_key:
+    try:
+        api_key = st.secrets.get("GEMINI_API_KEY")
+    except Exception:
+        api_key = None
+
 client = genai.Client(api_key=api_key)
+
+# Primary model first, backup model second
+MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
+
 
 def generate_structured_summary(df):
     """
     Generate a structured, sectioned summary of the lab report using Gemini.
     Returns a dict with: overview, findings (list), general_notes.
-    Purely descriptive/educational — never diagnostic or prescriptive.
+    Returns None if Gemini is unavailable (so the app doesn't crash).
+    Purely descriptive/educational - never diagnostic or prescriptive.
     """
 
     abnormal = df[df["Status"].isin(["High", "Low"])]
@@ -58,10 +70,24 @@ Respond ONLY in valid JSON with this exact structure, no extra text before or af
 If there are no abnormal findings, return an empty list for "findings" and adjust the overview and general_notes accordingly.
 """
 
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt
-    )
+    response = None
+    for model_name in MODELS:
+        for attempt in range(2):
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt
+                )
+                break
+            except Exception:
+                if attempt == 0:
+                    time.sleep(2)
+        if response is not None:
+            break
+
+    # Gemini unavailable on all models -> let the app handle it gracefully
+    if response is None:
+        return None
 
     raw_text = response.text.strip()
 

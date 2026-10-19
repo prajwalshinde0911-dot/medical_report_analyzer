@@ -60,27 +60,30 @@ def render_analysis(df, text, summary, show_ai_insight=True, key_prefix="current
         c2.metric("Normal", normal)
         c3.metric("Abnormal", abnormal)
 
-    if show_ai_insight and summary:
-        with st.container(border=True):
-            st.subheader("🤖 AI Health Insight")
-            st.markdown(f"**Overview:** {summary.get('overview', '')}")
+    if show_ai_insight:
+        if summary:
+            with st.container(border=True):
+                st.subheader("🤖 AI Health Insight")
+                st.markdown(f"**Overview:** {summary.get('overview', '')}")
 
-            findings = summary.get("findings", [])
-            if findings:
-                st.markdown("**Key Findings:**")
-                for f in findings:
-                    st.markdown(f"""
-                    <div class="param-card">
-                        <b>⚠️ {f.get('parameter', '')}</b><br>
-                        <small>{f.get('explanation', '')}</small>
-                    </div>
-                    """, unsafe_allow_html=True)
+                findings = summary.get("findings", [])
+                if findings:
+                    st.markdown("**Key Findings:**")
+                    for f in findings:
+                        st.markdown(f"""
+                        <div class="param-card">
+                            <b>⚠️ {f.get('parameter', '')}</b><br>
+                            <small>{f.get('explanation', '')}</small>
+                        </div>
+                        """, unsafe_allow_html=True)
 
-            general_notes = summary.get("general_notes", "")
-            if general_notes:
-                st.markdown(f"**General Notes:** {general_notes}")
+                general_notes = summary.get("general_notes", "")
+                if general_notes:
+                    st.markdown(f"**General Notes:** {general_notes}")
 
-            st.caption("⚠️ This is an AI-generated informational summary, not a medical diagnosis. Please consult your doctor for professional interpretation.")
+                st.caption("⚠️ This is an AI-generated informational summary, not a medical diagnosis. Please consult your doctor for professional interpretation.")
+        else:
+            st.warning("⚠️ AI Health Insight is temporarily unavailable (Gemini server busy). The rest of the analysis is shown below — please try again in a minute.")
 
     with st.container(border=True):
         st.subheader("📊 Analytics")
@@ -168,7 +171,10 @@ def dashboard_page():
                     summary = None
                     if show_ai_insight:
                         with st.spinner("Analyzing report..."):
-                            summary = generate_structured_summary(df)
+                            try:
+                                summary = generate_structured_summary(df)
+                            except Exception:
+                                summary = None
 
                     render_analysis(df, text, summary, show_ai_insight=show_ai_insight, key_prefix="current")
 
