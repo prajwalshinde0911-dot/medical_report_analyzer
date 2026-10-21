@@ -1,43 +1,18 @@
-import re
-import pandas as pd
+import pdfplumber
 
-def parse_parameters(text):
-    """
-    Parse lab report text and extract test parameters.
-    Expects lines roughly like:
-    Hemoglobin (Hb)    11.2    g/dL    13.5 - 17.5
-    """
-    results = []
 
-    # Pattern: name ... number ... unit ... range (number - number)
-    pattern = re.compile(
-        r"([A-Za-z][A-Za-z0-9\s\(\)/%]+?)\s+"     # test name
-        r"([\d.]+)\s+"                             # result value
-        r"([a-zA-Z/%µ]+(?:\s*cumm)?)\s+"           # unit
-        r"([<>]?\s*[\d.]+\s*-?\s*[\d.]*)"          # reference range
-    )
+def extract_text_from_pdf(file):
+    text = ""
+    with pdfplumber.open(file) as pdf:
+        for page in pdf.pages:
+            text += (page.extract_text() or "") + "\n"
+    return text.strip()
 
-    for line in text.split("\n"):
-        line = line.strip()
-        if not line or len(line) < 10:
-            continue
 
-        match = pattern.search(line)
-        if match:
-            name = match.group(1).strip()
-            value = match.group(2).strip()
-            unit = match.group(3).strip()
-            ref_range = match.group(4).strip()
-
-            # Skip header-like lines
-            if name.lower() in ["test name", "reference range"]:
-                continue
-
-            results.append({
-                "Parameter": name,
-                "Result": value,
-                "Unit": unit,
-                "Reference Range": ref_range
-            })
-
-    return pd.DataFrame(results)
+def is_text_extractable(file, min_chars=50):
+    try:
+        with pdfplumber.open(file) as pdf:
+            total = sum(len(page.extract_text() or "") for page in pdf.pages[:3])
+        return total >= min_chars
+    except Exception:
+        return False
