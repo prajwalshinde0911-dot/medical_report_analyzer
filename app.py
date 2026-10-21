@@ -6,6 +6,9 @@ from core.abnormality_detector import annotate_dataframe, parse_range
 from core.summary_generator import generate_structured_summary
 from core.ocr_extractor import extract_text_with_ocr
 from core.analytics import show_status_donut, show_range_position_chart
+from core.anemia_predictor import (
+    model_available, extract_features, check_plausible, predict, GENDER_CODES
+)
 
 st.set_page_config(page_title="Medical Report Analyzer", page_icon="🩺", layout="wide")
 
@@ -48,6 +51,55 @@ def login_page():
                     st.error("Invalid username or password")
             st.caption("Demo — Username: `admin` | Password: `admin123`")
 
+def render_anemia_section(df, key_prefix):
+    """Anemia screening using the trained ML model (Gender, Hemoglobin, MCH, MCHC, MCV)."""
+    with st.container(border=True):
+        st.subheader("🩸 Anemia Screening (ML)")
+
+        if not model_available():
+            st.info("Anemia model not found. Run `python train_anemia_model.py` once to create it.")
+            return
+
+        values = extract_features(df)
+        needed = ["Hemoglobin", "MCH", "MCHC", "MCV"]
+        missing = [f for f in needed if f not in values]
+
+        if missing:
+            st.caption(f"Could not find {', '.join(missing)} in the report. Enter them manually to continue.")
+        else:
+            st.caption("Values read from your report: " +
+                       ", ".join(f"{k} {values[k]}" for k in needed))
+
+        # Let the user fill in anything that wasn't extracted
+        for feat in missing:
+            entered = st.number_input(feat, value=None, step=0.1, key=f"{key_prefix}_anemia_{feat}")
+            if entered is not None:
+                values[feat] = float(entered)
+
+        gender = st.selectbox(
+            "Gender (needed by the model)",
+            list(GENDER_CODES.keys()),
+            index=None,
+            placeholder="Select gender",
+            key=f"{key_prefix}_anemia_gender",
+        )
+
+        if gender is None or any(f not in values for f in needed):
+            st.caption("Select gender and provide all four values to see the prediction.")
+            return
+
+        for w in check_plausible(values):
+            st.warning(w)
+
+        is_anemic, prob = predict(gender, {f: values[f] for f in needed})
+        if is_anemic:
+            st.error(f"⚠️ The model indicates a possible **anemia** pattern (confidence {prob:.0%}).")
+        else:
+            st.success(f"✅ The model does not indicate an anemia pattern (anemia probability {prob:.0%}).")
+
+        st.caption("⚠️ This is a screening aid from a small ML model, not a diagnosis. "
+                   "Please consult your doctor for professional interpretation.")
+
 def render_analysis(df, text, summary, show_ai_insight=True, key_prefix="current"):
     total = len(df)
     abnormal = len(df[df["Status"].isin(["High", "Low"])])
@@ -84,6 +136,8 @@ def render_analysis(df, text, summary, show_ai_insight=True, key_prefix="current
                 st.caption("⚠️ This is an AI-generated informational summary, not a medical diagnosis. Please consult your doctor for professional interpretation.")
         else:
             st.warning("⚠️ AI Health Insight is temporarily unavailable (Gemini server busy). The rest of the analysis is shown below — please try again in a minute.")
+
+    render_anemia_section(df, key_prefix)
 
     with st.container(border=True):
         st.subheader("📊 Analytics")

@@ -1,52 +1,43 @@
-import pdfplumber
-import PyPDF2
+import re
+import pandas as pd
 
-
-def _extract_with_pdfplumber(file):
-    text = ""
-    file.seek(0)
-    with pdfplumber.open(file) as pdf:
-        for page in pdf.pages:
-            page_text = page.extract_text()
-            if page_text:
-                text += page_text + "\n"
-    return text.strip()
-
-
-def _extract_with_pypdf2(file):
-    text = ""
-    file.seek(0)
-    reader = PyPDF2.PdfReader(file)
-    for page in reader.pages:
-        page_text = page.extract_text()
-        if page_text:
-            text += page_text + "\n"
-    return text.strip()
-
-
-def extract_text_from_pdf(file):
+def parse_parameters(text):
     """
-    Extract text from a digital PDF lab report.
-    Tries pdfplumber first, falls back to PyPDF2 if that fails.
+    Parse lab report text and extract test parameters.
+    Expects lines roughly like:
+    Hemoglobin (Hb)    11.2    g/dL    13.5 - 17.5
     """
-    try:
-        text = _extract_with_pdfplumber(file)
-        if text:
-            return text
-    except Exception:
-        pass
+    results = []
 
-    try:
-        text = _extract_with_pypdf2(file)
-        if text:
-            return text
-    except Exception:
-        pass
+    # Pattern: name ... number ... unit ... range (number - number)
+    pattern = re.compile(
+        r"([A-Za-z][A-Za-z0-9\s\(\)/%]+?)\s+"     # test name
+        r"([\d.]+)\s+"                             # result value
+        r"([a-zA-Z/%µ]+(?:\s*cumm)?)\s+"           # unit
+        r"([<>]?\s*[\d.]+\s*-?\s*[\d.]*)"          # reference range
+    )
 
-    return ""
+    for line in text.split("\n"):
+        line = line.strip()
+        if not line or len(line) < 10:
+            continue
 
+        match = pattern.search(line)
+        if match:
+            name = match.group(1).strip()
+            value = match.group(2).strip()
+            unit = match.group(3).strip()
+            ref_range = match.group(4).strip()
 
-def is_text_extractable(file):
-    """Check if the PDF has selectable text (not just scanned images)."""
-    text = extract_text_from_pdf(file)
-    return len(text.strip()) > 30
+            # Skip header-like lines
+            if name.lower() in ["test name", "reference range"]:
+                continue
+
+            results.append({
+                "Parameter": name,
+                "Result": value,
+                "Unit": unit,
+                "Reference Range": ref_range
+            })
+
+    return pd.DataFrame(results)
